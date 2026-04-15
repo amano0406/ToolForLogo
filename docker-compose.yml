@@ -1,0 +1,36 @@
+name: tool-for-logo
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app/src
+      TOOL_FOR_LOGO_STATE_ROOT: ${TOOL_FOR_LOGO_STATE_ROOT:-/data/workspaces}
+      TOOL_FOR_LOGO_REPORT_ROOT: ${TOOL_FOR_LOGO_REPORT_ROOT:-/data/reports}
+      TOOL_FOR_LOGO_ARCHIVE_ROOT: ${TOOL_FOR_LOGO_ARCHIVE_ROOT:-/data/archive}
+      TOOL_FOR_LOGO_DEFAULT_BACKEND: ${TOOL_FOR_LOGO_DEFAULT_BACKEND:-comfyui}
+      TOOL_FOR_LOGO_COMFYUI_BASE_URL: ${TOOL_FOR_LOGO_COMFYUI_BASE_URL:-http://host.docker.internal:8188}
+      TOOL_FOR_LOGO_COMFYUI_CHECKPOINT: ${TOOL_FOR_LOGO_COMFYUI_CHECKPOINT:-ponyDiffusionV6XL_v6StartWithThisOne.safetensors}
+      TOOL_FOR_LOGO_COMFYUI_WIDTH: ${TOOL_FOR_LOGO_COMFYUI_WIDTH:-1024}
+      TOOL_FOR_LOGO_COMFYUI_HEIGHT: ${TOOL_FOR_LOGO_COMFYUI_HEIGHT:-1024}
+      TOOL_FOR_LOGO_COMFYUI_STEPS: ${TOOL_FOR_LOGO_COMFYUI_STEPS:-20}
+      TOOL_FOR_LOGO_COMFYUI_CFG: ${TOOL_FOR_LOGO_COMFYUI_CFG:-6.5}
+      TOOL_FOR_LOGO_COMFYUI_SAMPLER: ${TOOL_FOR_LOGO_COMFYUI_SAMPLER:-dpmpp_2m_sde}
+      TOOL_FOR_LOGO_COMFYUI_SCHEDULER: ${TOOL_FOR_LOGO_COMFYUI_SCHEDULER:-karras}
+      TOOL_FOR_LOGO_COMFYUI_TIMEOUT_SECONDS: ${TOOL_FOR_LOGO_COMFYUI_TIMEOUT_SECONDS:-300}
+      TOOL_FOR_LOGO_COMFYUI_POLL_SECONDS: ${TOOL_FOR_LOGO_COMFYUI_POLL_SECONDS:-2}
+      TOOL_FOR_LOGO_COMFYUI_NEGATIVE_PROMPT: ${TOOL_FOR_LOGO_COMFYUI_NEGATIVE_PROMPT:-text, letters, wordmark, watermark, signature, mockup, poster, product photo, person, hand, scenery, 3d render, glossy, realistic, photorealistic, gradient mesh, cluttered background, anime, cartoon, pony, girl, face, eyes, body}
+      TOOL_FOR_LOGO_IMAGE_MODEL: ${TOOL_FOR_LOGO_IMAGE_MODEL:-gpt-image-1.5}
+      TOOL_FOR_LOGO_IMAGE_QUALITY: ${TOOL_FOR_LOGO_IMAGE_QUALITY:-medium}
+      TOOL_FOR_LOGO_IMAGE_SIZE: ${TOOL_FOR_LOGO_IMAGE_SIZE:-1024x1024}
+      TOOL_FOR_LOGO_IMAGE_BACKGROUND: ${TOOL_FOR_LOGO_IMAGE_BACKGROUND:-transparent}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "${TOOL_FOR_LOGO_WEB_PORT:-19130}:8080"
+    volumes:
+      - "${TOOL_FOR_LOGO_HOST_STATE_ROOT:-C:/Codex/workspaces/ToolForLogo}:/data/workspaces"
+      - "${TOOL_FOR_LOGO_HOST_REPORT_ROOT:-C:/Codex/reports/ToolForLogo}:/data/reports"
+      - "${TOOL_FOR_LOGO_HOST_ARCHIVE_ROOT:-C:/Codex/archive/ToolForLogo}:/data/archive"
