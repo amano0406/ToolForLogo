@@ -1,0 +1,79 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<section class="app-page">
+  <header class="panel page-header">
+    <div>
+      <p class="eyebrow">New Case</p>
+      <h1 class="page-title">Create a logo exploration case</h1>
+      <p class="page-description">まずは画像生成で 20-30 案を出し、目視で良い方向だけを残す流れを優先します。SVG 化はその次の段階として扱います。</p>
+    </div>
+  </header>
+
+  <form method="post" class="app-page">
+    <section class="panel">
+      <div class="form-grid">
+        <div class="form-row">
+          <label for="product_name">Product name</label>
+          <input class="form-input" id="product_name" name="product_name" type="text" required />
+        </div>
+        <div class="form-row">
+          <label for="count">Initial batch count</label>
+          <input class="form-input" id="count" name="count" type="number" min="1" max="40" value="{{ 30 if settings.defaultBatchCount < 30 else settings.defaultBatchCount }}" />
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top: 1rem;">
+        <label for="description">Description</label>
+        <textarea class="form-textarea" id="description" name="description" required></textarea>
+      </div>
+
+      <div class="form-row" style="margin-top: 1rem;">
+        <label for="notes">Notes</label>
+        <textarea class="form-textarea" id="notes" name="notes"></textarea>
+        <div class="form-help">禁止モチーフ、好みの雰囲気、海外向けかどうかなどを入れる想定です。</div>
+      </div>
+    </section>
+
+    <section class="panel subtle-panel">
+      <div class="form-grid">
+        <div class="form-row">
+          <label for="direction_hint">Direction hint</label>
+          <input class="form-input" id="direction_hint" name="direction_hint" type="text" value="{{ settings.defaultDirectionHint }}" />
+        </div>
+        <div class="form-row">
+          <label for="exploration_preset">Exploration preset</label>
+          <select id="exploration_preset" name="exploration_preset">
+            {% for preset in exploration_presets %}
+            <option value="{{ preset.preset_id }}" {% if settings.defaultExplorationPreset == preset.preset_id %}selected{% endif %}>{{ preset.label }} / {{ preset.audience }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="backend">Backend</label>
+          <select id="backend" name="backend">
+            <option value="diffusers" {% if default_backend == 'diffusers' %}selected{% endif %}>GPU Image Exploration</option>
+            <option value="mock" {% if default_backend == 'mock' %}selected{% endif %}>Mock</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top: 1rem;">
+        <label for="preset_id">Model preset</label>
+        <select id="preset_id" name="preset_id">
+          <option value="">Auto from settings</option>
+          {% for model in model_statuses %}
+          {% if model.family == 'image' %}
+          <option value="{{ model.preset_id }}">{{ model.display_name }} / {{ model.family }}{% if model.downloaded %} (downloaded){% endif %}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+        <div class="form-help">GPU worker で 30 案程度を一気に出し、良い方向を複数選択して絞り込むのを標準フローにします。</div>
+      </div>
+    </section>
+
+    <div style="display: flex; gap: 0.75rem;">
+      <a class="btn-secondary" href="{{ url_for('cases_index') }}">Cancel</a>
+      <button class="btn-primary" type="submit">Create case and queue generation</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

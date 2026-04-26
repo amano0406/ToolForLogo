@@ -1,0 +1,87 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<section class="app-page" id="cases-page" data-has-active="{{ 'true' if active_jobs else 'false' }}">
+  <header class="panel page-header">
+    <div>
+      <p class="eyebrow">Cases</p>
+      <h1 class="page-title">Logo exploration cases</h1>
+      <p class="page-description">案件、候補数、favorite 状態、worker job の進み具合を一覧で追えます。アクティブ job がある間は自動更新します。</p>
+    </div>
+    <a class="btn-primary" href="{{ url_for('new_case') }}">New Case</a>
+  </header>
+
+  {% if active_jobs %}
+  <section class="panel">
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Active</p>
+        <h2 class="section-title">Worker queue</h2>
+      </div>
+    </div>
+    <div class="grid-metrics" style="margin-top: 1rem;">
+      {% for job in active_jobs[:4] %}
+      {% set status = job.status %}
+      <div class="metric-card">
+        <div class="metric-label">{{ status.job_type }}</div>
+        <div class="metric-value">{{ status.progress_percent }}%</div>
+        <div class="metric-subtle">{{ status.message }}</div>
+        <div class="progress-track" style="margin-top: 0.75rem;"><div class="progress-fill" style="width: {{ status.progress_percent }}%"></div></div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="panel">
+    <div class="table-shell">
+      <table class="app-table">
+        <thead>
+          <tr>
+            <th>Case</th>
+            <th>Description</th>
+            <th>Candidates</th>
+            <th>Favorites</th>
+            <th>Recent jobs</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if not cases %}
+          <tr><td colspan="6">No cases yet.</td></tr>
+          {% endif %}
+          {% for item in cases %}
+          <tr>
+            <td>
+              <a class="table-link" href="{{ url_for('case_detail', case_id=item.record.case_id) }}">{{ item.record.product_name }}</a>
+              <div class="small-text">{{ item.record.case_id }}</div>
+            </td>
+            <td>{{ item.record.description }}</td>
+            <td>{{ item.candidate_count }}</td>
+            <td>{{ item.favorite_count }}</td>
+            <td>
+              {% if item.jobs %}
+                {% for job in item.jobs %}
+                <div class="small-text">{{ job.status.job_type }}: {{ job.status.state }}{% if job.status.progress_percent %} ({{ job.status.progress_percent }}%){% endif %}</div>
+                {% endfor %}
+              {% else %}
+                <span class="small-text">No jobs yet</span>
+              {% endif %}
+            </td>
+            <td><a class="btn-table" href="{{ url_for('case_detail', case_id=item.record.case_id) }}">Open</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const page = document.getElementById('cases-page');
+  if (!page || page.dataset.hasActive !== 'true') return;
+  window.setInterval(() => location.reload(), 5000);
+})();
+</script>
+{% endblock %}

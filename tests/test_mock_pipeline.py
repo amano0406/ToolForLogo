@@ -70,14 +70,24 @@ def test_export_bundle_renders_name_override(tmp_path: Path) -> None:
         store,
         case_id=case_record.case_id,
         name_override="Dockyard Pulse",
+        tone_preset="editorial",
     )
 
     manifest_path = Path(export_record.export_dir) / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["name_override"] == "Dockyard Pulse"
+    assert manifest["tone_preset"] == "editorial"
+    assert manifest["tone_label"] == "Editorial"
     assert Path(manifest["comparison_sheet_png"]).exists()
     assert manifest["candidates"][0]["candidate_id"] == candidate_id
+    assert Path(manifest["candidates"][0]["assets"]["brand_board_png"]).exists()
+    assert Path(manifest["candidates"][0]["assets"]["app_icon_light_png"]).exists()
+    assert Path(manifest["candidates"][0]["assets"]["favicon_strip_png"]).exists()
+    assert Path(manifest["candidates"][0]["assets"]["tone_review_png"]).exists()
+    assert len(manifest["candidates"][0]["tone_variants"]) == 5
     assert Path(export_record.archive_path).exists()
+    assert export_record.tone_preset == "editorial"
+    assert export_record.tone_label == "Editorial"
 
 
 def test_generate_batch_can_derive_from_selected_candidate(tmp_path: Path) -> None:
@@ -144,4 +154,8 @@ def test_render_candidate_assets_stylizes_external_mark(tmp_path: Path) -> None:
 
     assert Path(assets["mark_png"]).exists()
     assert Path(assets["mark_raw_png"]).exists()
+    assert Path(assets["mark_vector_svg"]).exists()
+    assert Path(assets["vector_report_json"]).exists()
+    assert Path(assets["lockup_horizontal_vector_svg"]).exists()
+    assert Path(assets["lockup_stacked_vector_svg"]).exists()
     assert "mark_svg" not in assets

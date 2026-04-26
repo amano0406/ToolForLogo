@@ -7,17 +7,14 @@ set "DOCKER_DESKTOP_URL=https://docs.docker.com/desktop/setup/install/windows-in
 where docker >nul 2>&1
 if errorlevel 1 (
   echo Docker Desktop is not installed or docker.exe is not on PATH.
-  echo Download and install Docker Desktop here:
   echo   %DOCKER_DESKTOP_URL%
-  if /I not "%TOOL_FOR_LOGO_SKIP_HELP_LINK%"=="1" start "" "%DOCKER_DESKTOP_URL%" >nul 2>&1
   exit /b 1
 )
 
 docker info >nul 2>&1
 if errorlevel 1 (
   echo Docker Desktop is installed but the Docker engine is not ready.
-  echo Start Docker Desktop, wait until the engine is running, and try again.
-  if /I not "%TOOL_FOR_LOGO_SKIP_HELP_LINK%"=="1" start "" "%DOCKER_DESKTOP_URL%" >nul 2>&1
+  echo   %DOCKER_DESKTOP_URL%
   exit /b 1
 )
 
@@ -27,61 +24,53 @@ if not exist ".env" (
 )
 
 set "WEB_PORT=19130"
-set "HOST_STATE_ROOT=C:\Codex\workspaces\ToolForLogo"
-set "HOST_REPORT_ROOT=C:\Codex\reports\ToolForLogo"
-set "HOST_ARCHIVE_ROOT=C:\Codex\archive\ToolForLogo"
-set "START_COMFYUI=1"
-set "COMFYUI_DIR=C:\apps\ComfyUI_windows_portable"
-
 for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
   if /I "%%A"=="TOOL_FOR_LOGO_WEB_PORT" set "WEB_PORT=%%B"
-  if /I "%%A"=="TOOL_FOR_LOGO_HOST_STATE_ROOT" set "HOST_STATE_ROOT=%%B"
-  if /I "%%A"=="TOOL_FOR_LOGO_HOST_REPORT_ROOT" set "HOST_REPORT_ROOT=%%B"
-  if /I "%%A"=="TOOL_FOR_LOGO_HOST_ARCHIVE_ROOT" set "HOST_ARCHIVE_ROOT=%%B"
-  if /I "%%A"=="TOOL_FOR_LOGO_START_COMFYUI" set "START_COMFYUI=%%B"
-  if /I "%%A"=="TOOL_FOR_LOGO_COMFYUI_DIR" set "COMFYUI_DIR=%%B"
+  if /I "%%A"=="TOOL_FOR_LOGO_HOST_APPDATA_ROOT" set "HOST_APPDATA=%%B"
+  if /I "%%A"=="TOOL_FOR_LOGO_HOST_UPLOADS_ROOT" set "HOST_UPLOADS=%%B"
+  if /I "%%A"=="TOOL_FOR_LOGO_HOST_OUTPUTS_ROOT" set "HOST_OUTPUTS=%%B"
+  if /I "%%A"=="TOOL_FOR_LOGO_HOST_REPORT_ROOT" set "HOST_REPORTS=%%B"
+  if /I "%%A"=="TOOL_FOR_LOGO_HOST_ARCHIVE_ROOT" set "HOST_ARCHIVE=%%B"
+  if /I "%%A"=="TOOL_FOR_LOGO_HOST_HF_CACHE_ROOT" set "HOST_HF_CACHE=%%B"
+  if /I "%%A"=="TOOL_FOR_LOGO_HOST_TORCH_CACHE_ROOT" set "HOST_TORCH_CACHE=%%B"
 )
 
-if not exist "%HOST_STATE_ROOT%" mkdir "%HOST_STATE_ROOT%" >nul 2>&1
-if not exist "%HOST_REPORT_ROOT%" mkdir "%HOST_REPORT_ROOT%" >nul 2>&1
-if not exist "%HOST_ARCHIVE_ROOT%" mkdir "%HOST_ARCHIVE_ROOT%" >nul 2>&1
-
-if /I "%START_COMFYUI%"=="1" (
-  call :ensure_comfyui
-  if errorlevel 1 exit /b 1
+for %%P in ("!HOST_APPDATA!" "!HOST_UPLOADS!" "!HOST_OUTPUTS!" "!HOST_REPORTS!" "!HOST_ARCHIVE!" "!HOST_HF_CACHE!" "!HOST_TORCH_CACHE!") do (
+  if not "%%~P"=="" mkdir "%%~P" >nul 2>&1
 )
 
-echo Starting ToolForLogo web container...
+echo Starting ToolForLogo web and worker containers...
 docker compose up --build -d
 if errorlevel 1 (
   echo docker compose failed before the app became ready.
   exit /b 1
 )
 
-echo Waiting for web health check...
+echo Waiting for containers and web health check...
 set /a ATTEMPT=0
 
 :wait_loop
 set /a ATTEMPT+=1
 set "WEB_RUNNING="
-
+set "WORKER_RUNNING="
 for /f %%S in ('docker compose ps --services --status running 2^>nul') do (
   if /I "%%S"=="web" set "WEB_RUNNING=1"
+  if /I "%%S"=="worker" set "WORKER_RUNNING=1"
 )
 
-if defined WEB_RUNNING (
-  powershell -NoLogo -NoProfile -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:%WEB_PORT%/health' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
+if defined WEB_RUNNING if defined WORKER_RUNNING (
+  powershell -NoLogo -NoProfile -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:%WEB_PORT%/health' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
   if not errorlevel 1 goto ready
 )
 
-if !ATTEMPT! GEQ 45 goto failed
-
+if !ATTEMPT! GEQ 60 goto failed
 powershell -NoLogo -NoProfile -Command "Start-Sleep -Seconds 2" >nul 2>&1
 goto wait_loop
 
 :ready
 echo ToolForLogo is ready at http://localhost:%WEB_PORT%
-echo Example status endpoint: http://localhost:%WEB_PORT%/api/status
+if /I "%TOOL_FOR_LOGO_SKIP_BROWSER_OPEN%"=="1" exit /b 0
+start "" "http://localhost:%WEB_PORT%"
 exit /b 0
 
 :failed
@@ -90,38 +79,5 @@ echo.
 docker compose ps
 echo.
 echo Last container logs:
-docker compose logs --tail 60 web
+docker compose logs --tail 80 web worker
 exit /b 1
-
-:ensure_comfyui
-powershell -NoLogo -NoProfile -Command "try { $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8188/system_stats' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
-if not errorlevel 1 (
-  echo ComfyUI API is already ready at http://127.0.0.1:8188
-  exit /b 0
-)
-
-if not exist "%COMFYUI_DIR%\run_nvidia_gpu_api.bat" (
-  echo ComfyUI was requested but %COMFYUI_DIR%\run_nvidia_gpu_api.bat was not found.
-  exit /b 1
-)
-
-echo Starting local ComfyUI backend...
-start "" /min cmd /c "cd /d \"%COMFYUI_DIR%\" && call run_nvidia_gpu_api.bat"
-echo Waiting for ComfyUI API...
-set /a COMFY_ATTEMPT=0
-
-:wait_comfy
-set /a COMFY_ATTEMPT+=1
-powershell -NoLogo -NoProfile -Command "try { $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8188/system_stats' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
-if not errorlevel 1 (
-  echo ComfyUI API is ready at http://127.0.0.1:8188
-  exit /b 0
-)
-
-if !COMFY_ATTEMPT! GEQ 60 (
-  echo ComfyUI did not become ready in time.
-  exit /b 1
-)
-
-powershell -NoLogo -NoProfile -Command "Start-Sleep -Seconds 2" >nul 2>&1
-goto wait_comfy

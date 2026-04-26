@@ -1,0 +1,15 @@
+﻿{
+  "schemaVersion": 2,
+  "uiLanguage": "ja",
+  "computeMode": "gpu",
+  "processingQuality": "standard",
+  "defaultBatchCount": 30,
+  "defaultDirectionHint": "",
+  "defaultExplorationPreset": "balanced-saas",
+  "huggingfaceTermsConfirmed": false,
+  "allowAutoModelDownload": true,
+  "preferredConceptPreset": "concept-standard",
+  "preferredCpuPreset": "cpu-standard",
+  "preferredGpuPreset": "gpu-standard",
+  "preferredHighGpuPreset": "gpu-high"
+}

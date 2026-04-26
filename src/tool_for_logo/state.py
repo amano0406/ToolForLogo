@@ -1,7 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
-import os
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,14 +8,11 @@ from typing import Any
 from uuid import uuid4
 
 from .models import BatchRecord, CandidateRecord, CandidateStatus, ExportRecord, ProjectCase
+from .runtime import appdata_root, archive_root, report_root
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
-
-def _default_windows_or_wsl_path(windows_path: str, wsl_path: str) -> str:
-    return windows_path if os.name == "nt" else wsl_path
 
 
 class ToolForLogoStore:
@@ -30,34 +26,11 @@ class ToolForLogoStore:
 
     @classmethod
     def from_env(cls) -> "ToolForLogoStore":
-        state_root = Path(
-            os.getenv(
-                "TOOL_FOR_LOGO_STATE_ROOT",
-                _default_windows_or_wsl_path(
-                    r"C:\Codex\workspaces\ToolForLogo\state",
-                    "/mnt/c/Codex/workspaces/ToolForLogo/state",
-                ),
-            )
+        return cls(
+            state_root=appdata_root(),
+            report_root=report_root(),
+            archive_root=archive_root(),
         )
-        report_root = Path(
-            os.getenv(
-                "TOOL_FOR_LOGO_REPORT_ROOT",
-                _default_windows_or_wsl_path(
-                    r"C:\Codex\reports\ToolForLogo",
-                    "/mnt/c/Codex/reports/ToolForLogo",
-                ),
-            )
-        )
-        archive_root = Path(
-            os.getenv(
-                "TOOL_FOR_LOGO_ARCHIVE_ROOT",
-                _default_windows_or_wsl_path(
-                    r"C:\Codex\archive\ToolForLogo",
-                    "/mnt/c/Codex/archive/ToolForLogo",
-                ),
-            )
-        )
-        return cls(state_root=state_root, report_root=report_root, archive_root=archive_root)
 
     def _ensure_roots(self) -> None:
         for path in (self.cases_root, self.logs_root, self.report_root, self.archive_root):
@@ -65,10 +38,7 @@ class ToolForLogoStore:
 
     def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     def _read_json(self, path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -123,7 +93,7 @@ class ToolForLogoStore:
         return ProjectCase.from_dict(self._read_json(self.case_path(case_id)))
 
     def list_cases(self) -> list[ProjectCase]:
-        paths = sorted(self.cases_root.glob("*/case.json"))
+        paths = sorted(self.cases_root.glob("*/case.json"), reverse=True)
         return [ProjectCase.from_dict(self._read_json(path)) for path in paths]
 
     def touch_case(self, case_id: str) -> ProjectCase:
@@ -159,7 +129,7 @@ class ToolForLogoStore:
         self._write_json(self.batch_path(batch.case_id, batch.batch_id), batch.to_dict())
 
     def list_batches(self, case_id: str) -> list[BatchRecord]:
-        paths = sorted(self.batches_root(case_id).glob("*.json"))
+        paths = sorted(self.batches_root(case_id).glob("*.json"), reverse=True)
         return [BatchRecord.from_dict(self._read_json(path)) for path in paths]
 
     def save_candidate(self, candidate: CandidateRecord) -> None:
@@ -169,15 +139,10 @@ class ToolForLogoStore:
         return CandidateRecord.from_dict(self._read_json(self.candidate_path(case_id, candidate_id)))
 
     def list_candidates(self, case_id: str) -> list[CandidateRecord]:
-        paths = sorted(self.candidates_root(case_id).glob("*/candidate.json"))
+        paths = sorted(self.candidates_root(case_id).glob("*/candidate.json"), reverse=True)
         return [CandidateRecord.from_dict(self._read_json(path)) for path in paths]
 
-    def update_candidate_status(
-        self,
-        case_id: str,
-        candidate_id: str,
-        status: CandidateStatus,
-    ) -> CandidateRecord:
+    def update_candidate_status(self, case_id: str, candidate_id: str, status: CandidateStatus) -> CandidateRecord:
         candidate = self.get_candidate(case_id, candidate_id)
         candidate.status = status
         candidate.updated_at = utc_now()
@@ -189,7 +154,7 @@ class ToolForLogoStore:
         self._write_json(self.export_state_path(export_record.case_id, export_record.export_id), export_record.to_dict())
 
     def list_exports(self, case_id: str) -> list[ExportRecord]:
-        paths = sorted(self.exports_root(case_id).glob("*.json"))
+        paths = sorted(self.exports_root(case_id).glob("*.json"), reverse=True)
         return [ExportRecord.from_dict(self._read_json(path)) for path in paths]
 
     def status_payload(self) -> dict[str, Any]:

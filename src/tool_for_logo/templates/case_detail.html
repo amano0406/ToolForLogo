@@ -1,0 +1,303 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<section class="app-page" id="case-detail" data-has-active="{{ 'true' if active_jobs else 'false' }}">
+  <header class="panel page-header">
+    <div>
+      <p class="eyebrow">Case</p>
+      <h1 class="page-title">{{ case_record.product_name }}</h1>
+      <p class="page-description">{{ case_record.description }}</p>
+      {% if case_record.notes %}<div class="small-text">{{ case_record.notes }}</div>{% endif %}
+    </div>
+  </header>
+
+  <section class="grid-metrics">
+    <div class="metric-card"><div class="metric-label">Candidates</div><div class="metric-value">{{ candidates|length }}</div></div>
+    <div class="metric-card"><div class="metric-label">Favorites</div><div class="metric-value">{{ favorite_count }}</div></div>
+    <div class="metric-card"><div class="metric-label">Batches</div><div class="metric-value">{{ batches|length }}</div></div>
+    <div class="metric-card"><div class="metric-label">Exports</div><div class="metric-value">{{ exports|length }}</div></div>
+  </section>
+
+  <section class="grid-4">
+    <div class="metric-card"><div class="metric-label">Fresh</div><div class="metric-value">{{ status_counts.fresh }}</div></div>
+    <div class="metric-card"><div class="metric-label">Favorite</div><div class="metric-value">{{ status_counts.favorite }}</div></div>
+    <div class="metric-card"><div class="metric-label">Adopted</div><div class="metric-value">{{ status_counts.adopted }}</div></div>
+    <div class="metric-card"><div class="metric-label">Excluded</div><div class="metric-value">{{ status_counts.excluded }}</div></div>
+  </section>
+
+  <div class="grid-2">
+    <section class="panel">
+      <div class="page-header">
+        <div>
+          <p class="eyebrow">Generate</p>
+          <h2 class="section-title">Queue more candidates</h2>
+        </div>
+      </div>
+      <form method="post" action="{{ url_for('queue_batch', case_id=case_record.case_id) }}" class="app-page" style="gap: 1rem; margin-top: 1rem;">
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="count">Exploration batch count</label>
+            <input class="form-input" id="count" name="count" type="number" min="1" max="40" value="{{ 30 if settings.defaultBatchCount < 30 else settings.defaultBatchCount }}" />
+          </div>
+          <div class="form-row">
+            <label for="exploration_preset">Exploration preset</label>
+            <select id="exploration_preset" name="exploration_preset">
+              {% for preset in exploration_presets %}
+              <option value="{{ preset.preset_id }}" {% if settings.defaultExplorationPreset == preset.preset_id %}selected{% endif %}>{{ preset.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="backend">Backend</label>
+            <select id="backend" name="backend">
+              <option value="diffusers" {% if default_backend == 'diffusers' %}selected{% endif %}>GPU Image Exploration</option>
+              <option value="mock" {% if default_backend == 'mock' %}selected{% endif %}>Mock</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="preset_id">Model preset</label>
+            <select id="preset_id" name="preset_id">
+              <option value="">Auto from settings</option>
+              {% for model in model_statuses %}
+              {% if model.family == 'image' %}
+              <option value="{{ model.preset_id }}">{{ model.display_name }} / {{ model.family }}{% if model.downloaded %} (downloaded){% endif %}</option>
+              {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="source_candidate_id">Derive from candidate</label>
+            <select id="source_candidate_id" name="source_candidate_id">
+              <option value="">Broad exploration</option>
+              {% for candidate in candidates %}
+              <option value="{{ candidate.candidate_id }}">{{ candidate.title }} / {{ candidate.direction }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="direction_hint">Direction hint</label>
+          <input class="form-input" id="direction_hint" name="direction_hint" type="text" value="" />
+        </div>
+        <div class="small-text">GPU worker でまず 20-30 案をまとめて出し、目視で複数選択して favorite / adopted に寄せる運用を想定しています。</div>
+        <div><button class="btn-primary" type="submit">Queue generation</button></div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="page-header">
+        <div>
+          <p class="eyebrow">Export</p>
+          <h2 class="section-title">Create export bundle</h2>
+        </div>
+      </div>
+      <form method="post" action="{{ url_for('export_case', case_id=case_record.case_id) }}" class="app-page" style="gap: 1rem; margin-top: 1rem;">
+        <div class="form-row">
+          <label for="name_override">Name override</label>
+          <input class="form-input" id="name_override" name="name_override" type="text" placeholder="optional" />
+        </div>
+        <div class="form-row">
+          <label for="tone_preset">Tone preset</label>
+          <select id="tone_preset" name="tone_preset">
+            {% for preset in tone_presets %}
+            <option value="{{ preset.preset_id }}" {% if preset.preset_id == 'product-ui' %}selected{% endif %}>{{ preset.label }}</option>
+            {% endfor %}
+          </select>
+          <div class="small-text">トーンは主に文字組みと見せ方に効かせ、選択した候補を light / dark の PNG ボードへ具現化します。</div>
+        </div>
+        <div class="form-row">
+          <label>Selected candidates</label>
+          <div class="small-text">未選択なら favorite / adopted を優先し、それも無ければ先頭 3 件を書き出します。</div>
+          <div style="display: grid; gap: 0.45rem; max-height: 220px; overflow: auto; margin-top: 0.5rem;">
+            {% for candidate in candidates %}
+            <label class="small-text"><input type="checkbox" name="candidate_ids" value="{{ candidate.candidate_id }}" /> {{ candidate.title }} / {{ candidate.status.value }}</label>
+            {% endfor %}
+          </div>
+        </div>
+        <div><button class="btn-primary" type="submit">Materialize selection</button></div>
+      </form>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Worker jobs</p>
+        <h2 class="section-title">Job history</h2>
+      </div>
+    </div>
+    <div class="table-shell" style="margin-top: 1rem;">
+      <table class="app-table">
+        <thead><tr><th>Job</th><th>State</th><th>Progress</th><th>Message</th></tr></thead>
+        <tbody>
+          {% if not jobs %}
+          <tr><td colspan="4">No jobs yet.</td></tr>
+          {% endif %}
+          {% for job in jobs %}
+          <tr>
+            <td>{{ job.job_id }}</td>
+            <td>{{ job.status.state }}</td>
+            <td>
+              <div>{{ job.status.progress_percent }}%</div>
+              <div class="progress-track" style="margin-top: 0.4rem;"><div class="progress-fill" style="width: {{ job.status.progress_percent }}%"></div></div>
+            </td>
+            <td>{{ job.status.message }}{% if job.status.error_message %}<div class="small-text">{{ job.status.error_message }}</div>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {% if exports %}
+  <section class="panel">
+    <div class="page-header"><div><p class="eyebrow">Exports</p><h2 class="section-title">Generated bundles</h2></div></div>
+    <div class="export-list" style="margin-top: 1rem;">
+      {% for export in exports %}
+      <div class="export-card">
+        <div><strong>{{ export.export_id }}</strong><div class="small-text">{{ export.created_at }}{% if export.tone_label %} / {{ export.tone_label }}{% endif %}</div></div>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <a class="btn-table" href="{{ url_for('export_comparison', case_id=case_record.case_id, export_id=export.export_id) }}">Comparison</a>
+          <a class="btn-table-success" href="{{ url_for('export_archive', case_id=case_record.case_id, export_id=export.export_id) }}">ZIP</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if top_candidates %}
+  <section class="panel">
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Recommended First</p>
+        <h2 class="section-title">High-score candidates</h2>
+        <div class="small-text">シルエットの単純さ、小サイズ視認性、余白バランスから自動で上位を出しています。</div>
+      </div>
+    </div>
+    <div class="candidate-grid candidate-grid-top" style="margin-top: 1rem;">
+      {% for candidate in top_candidates %}
+      <article class="candidate-card candidate-card-top">
+        <div class="candidate-preview">
+          <img loading="lazy" src="{{ url_for('candidate_asset', case_id=case_record.case_id, candidate_id=candidate.candidate_id, asset_key='preview_light_png') }}" alt="{{ candidate.title }}" />
+        </div>
+        <div class="candidate-meta">
+          <div class="candidate-headline">
+            <div class="candidate-title">{{ candidate.title }}</div>
+            <span class="score-pill">{{ '%.1f'|format(candidate.generation.quality.total if candidate.generation.quality else 0) }}</span>
+          </div>
+          <div class="small-text">
+            {% if candidate.generation.exploration_preset_label %}{{ candidate.generation.exploration_preset_label }} / {% endif %}
+            {% if candidate.generation.quality and candidate.generation.quality.notes %}{{ candidate.generation.quality.notes | join(', ') }}{% endif %}
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="panel">
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Candidates</p>
+        <h2 class="section-title">Gallery</h2>
+        <div class="small-text">30案を一覧で見て、良い方向を複数選択して一気に favorite / adopted / excluded へ振り分けられます。</div>
+      </div>
+    </div>
+    <form id="bulk-status-form" method="post" action="{{ url_for('bulk_update_candidate_status', case_id=case_record.case_id) }}" class="bulk-toolbar" style="margin-top: 1rem;">
+      <div class="small-text">チェックした候補に一括で状態を付けます。<strong id="selected-count">0</strong> selected.</div>
+      <div class="bulk-actions">
+        <button class="btn-table-success" type="submit" name="status" value="favorite">Favorite selected</button>
+        <button class="btn-table" type="submit" name="status" value="adopted">Adopt selected</button>
+        <button class="btn-table-danger" type="submit" name="status" value="excluded">Exclude selected</button>
+        <button class="btn-table" type="submit" name="status" value="fresh">Reset selected</button>
+        <button class="btn-table" type="button" id="select-all-candidates">Select all</button>
+        <button class="btn-table" type="button" id="clear-all-candidates">Clear</button>
+      </div>
+    </form>
+    <div class="candidate-grid" style="margin-top: 1rem;">
+      {% for candidate in candidates %}
+      {% set badge_class = 'status-badge-neutral' %}
+      {% if candidate.status.value == 'favorite' %}
+      {% set badge_class = 'status-badge-success' %}
+      {% elif candidate.status.value == 'adopted' %}
+      {% set badge_class = 'status-badge-info' %}
+      {% elif candidate.status.value == 'excluded' %}
+      {% set badge_class = 'status-badge-danger' %}
+      {% endif %}
+      <article class="candidate-card candidate-card-{{ candidate.status.value }}">
+        <label class="candidate-check">
+          <input form="bulk-status-form" type="checkbox" name="candidate_ids" value="{{ candidate.candidate_id }}" />
+          <span>Select</span>
+        </label>
+        <div class="candidate-preview">
+          <img loading="lazy" src="{{ url_for('candidate_asset', case_id=case_record.case_id, candidate_id=candidate.candidate_id, asset_key='preview_light_png') }}" alt="{{ candidate.title }}" />
+        </div>
+        <div class="candidate-meta">
+          <div class="candidate-headline">
+            <div class="candidate-title">{{ candidate.title }}</div>
+            <div style="display: flex; gap: 0.45rem; align-items: center;">
+              {% if candidate.generation.quality %}
+              <span class="score-pill">{{ '%.1f'|format(candidate.generation.quality.total) }}</span>
+              {% endif %}
+              <span class="status-badge {{ badge_class }}">{{ candidate.status.value }}</span>
+            </div>
+          </div>
+          <div class="candidate-direction">{{ candidate.direction }}</div>
+          <div class="small-text">{{ candidate.rationale }}</div>
+          <div class="small-text">
+            backend: {{ candidate.generation.backend }}
+            {% if candidate.generation.exploration_label %} / family: {{ candidate.generation.exploration_label }}{% endif %}
+            {% if candidate.generation.exploration_preset_label %} / preset: {{ candidate.generation.exploration_preset_label }}{% endif %}
+            / seed: {{ candidate.seed }}
+          </div>
+          {% if candidate.generation.quality and candidate.generation.quality.notes %}
+          <div class="small-text">quality: {{ candidate.generation.quality.notes | join(', ') }}</div>
+          {% endif %}
+        </div>
+        <div class="candidate-actions">
+          {% for value, label, klass in [('fresh', 'Fresh', 'btn-table'), ('favorite', 'Favorite', 'btn-table-success'), ('adopted', 'Adopted', 'btn-table'), ('excluded', 'Exclude', 'btn-table-danger')] %}
+          <form method="post" action="{{ url_for('update_candidate_status', case_id=case_record.case_id, candidate_id=candidate.candidate_id) }}">
+            <input type="hidden" name="status" value="{{ value }}" />
+            <button class="{{ klass }}" type="submit">{{ label }}</button>
+          </form>
+          {% endfor %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const page = document.getElementById('case-detail');
+  if (!page || page.dataset.hasActive !== 'true') return;
+  window.setInterval(() => location.reload(), 5000);
+})();
+
+(() => {
+  const checkboxes = Array.from(document.querySelectorAll('input[name="candidate_ids"]'));
+  const selected = document.getElementById('selected-count');
+  const selectAll = document.getElementById('select-all-candidates');
+  const clearAll = document.getElementById('clear-all-candidates');
+  if (!checkboxes.length || !selected) return;
+  const update = () => {
+    selected.textContent = String(checkboxes.filter((item) => item.checked).length);
+  };
+  for (const checkbox of checkboxes) checkbox.addEventListener('change', update);
+  if (selectAll) selectAll.addEventListener('click', () => {
+    for (const checkbox of checkboxes) checkbox.checked = true;
+    update();
+  });
+  if (clearAll) clearAll.addEventListener('click', () => {
+    for (const checkbox of checkboxes) checkbox.checked = false;
+    update();
+  });
+  update();
+})();
+</script>
+{% endblock %}

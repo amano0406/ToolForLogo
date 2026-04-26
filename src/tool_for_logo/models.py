@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
@@ -10,6 +10,13 @@ class CandidateStatus(StrEnum):
     FAVORITE = "favorite"
     EXCLUDED = "excluded"
     ADOPTED = "adopted"
+
+
+class JobState(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 @dataclass(slots=True)
@@ -90,6 +97,8 @@ class ExportRecord:
     export_dir: str
     archive_path: str
     created_at: str
+    tone_preset: str | None = None
+    tone_label: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -97,3 +106,46 @@ class ExportRecord:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "ExportRecord":
         return cls(**payload)
+
+
+@dataclass(slots=True)
+class JobRequest:
+    job_id: str
+    job_type: str
+    created_at: str
+    case_id: str | None = None
+    payload: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "JobRequest":
+        return cls(**payload)
+
+
+@dataclass(slots=True)
+class JobStatus:
+    job_id: str
+    job_type: str
+    state: JobState
+    current_stage: str
+    message: str
+    created_at: str
+    updated_at: str
+    case_id: str | None = None
+    progress_percent: float = 0.0
+    items_total: int = 0
+    items_done: int = 0
+    error_message: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["state"] = self.state.value
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "JobStatus":
+        raw = dict(payload)
+        raw["state"] = JobState(raw["state"])
+        return cls(**raw)

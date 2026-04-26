@@ -1,60 +1,95 @@
-# ToolForLogo
+﻿# ToolForLogo
 
-`ToolForLogo` は、サービス名と説明からロゴ案を大量に比較し、残し、派生させ、名前差し替え付きで持ち出すためのローカル中心 CLI / HTTP ツールです。UI はまだ入れず、案件・候補・バッチ・書き出しの運用契約を先に固定しています。
+`ToolForLogo` は、製品名と説明から多数のロゴ方向性を出して、比較し、残し、派生させ、書き出すためのローカル中心ワークベンチです。
 
-このプロダクトの主 backend は、既存製品 `C:\apps\ComfyUI_windows_portable` を使う `comfyui` です。`ToolForLogo` 自身は、AI が出した図形をそのまま見せるのではなく、ローカルでマーク抽出、配色の整形、ワードマーク合成、比較シート生成まで担当します。
+今回の構成は `TimelineForAudio` / `TimelineForVideo` を参考に、単一コンテナではなく次の 2 層に切り替えています。
 
-## 位置づけ
+- `web`: 設定画面、案件作成、案件一覧、候補ギャラリー、export 操作
+- `worker`: Python 実行、local model ダウンロード、候補生成 job の実処理
 
-- Dock 系ではありません
-- Timeline 系でもありません
-- 新しい `tool` 系として扱います
+重要:
 
-理由:
+- `ComfyUI` は使いません
+- 画像生成は worker 側の local model backend を前提にします
+- ロゴのマーク生成を model が担当し、ワードマークと lockup は ToolForLogo 側で合成します
 
-- 主目的が外部サービス操作ではなく、ローカルでの案探索と選定だから
-- 画像 1 枚の生成器ではなく、案件単位の比較と仕上げが中心だから
-- 将来 UI を乗せる前に CLI と state contract を固めたいから
+## いまの到達点
+
+できること:
+
+- Settings で compute mode / quality / Hugging Face token / model preset を管理
+- preset ごとの download / delete / cache clear を worker job として実行
+- 新規案件を作成して 20-30 件の image exploration batch を queue
+- 案件一覧で job の進捗を確認
+- 案件詳細で候補の preview を見て複数選択で favorite / adopted / excluded を更新
+- favorite / adopted を軸に export bundle を作成
+- `comparison_sheet.png` と ZIP export を生成
+- CLI から settings / models / jobs / daemon を操作
+
+未実装またはこれから詰めるもの:
+
+- 小サイズ視認性スコア
+- 禁止モチーフの構造化入力
+- より細かい方向性プリセット
+- GPU overlay compose
+
+## アーキテクチャ
+
+```text
+ToolForLogo/
+  configs/
+    runtime.defaults.json
+  docker/
+    web.Dockerfile
+    worker.Dockerfile
+  src/tool_for_logo/
+    backends.py
+    cli.py
+    generator.py
+    job_store.py
+    model_catalog.py
+    settings.py
+    state.py
+    web_app.py
+    worker.py
+    templates/
+    static/
+  tests/
+  docker-compose.yml
+  .env.example
+  start.bat
+  stop.bat
+```
+
+shared roots:
+
+- app data: `C:\Codex\workspaces\ToolForLogo\app-data`
+- uploads: `C:\Codex\workspaces\ToolForLogo\uploads`
+- outputs / jobs: `C:\Codex\workspaces\ToolForLogo\outputs`
+- reports: `C:\Codex\reports\ToolForLogo`
+- archive: `C:\Codex\archive\ToolForLogo`
+- Hugging Face cache: `C:\Codex\workspaces\ToolForLogo\cache\huggingface`
+- Torch cache: `C:\Codex\workspaces\ToolForLogo\cache\torch`
 
 ## Backend
 
 現在の backend:
 
-- `comfyui`: 既存のローカル ComfyUI API を使ってマークの原案を生成
-- `mock`: 実画像生成なしでフロー確認
-- `openai`: 任意のクラウド fallback。標準依存には含めていません
+- `diffusers`: worker container 内で local model を直接ロードして 30 案前後の logo exploration mark を生成する標準 backend
+- `local-svg`: ローカル LLM で spec を作り、SVG / preview を組み立てる backend
+- `mock`: モデル未導入でも flow を確認できる描画 backend
 
-標準運用では `TOOL_FOR_LOGO_DEFAULT_BACKEND=comfyui` を使います。
+標準 preset:
 
-## 入力
+- `cpu-standard`: `segmind/tiny-sd`
+- `gpu-standard`: `stabilityai/sdxl-turbo`
+- `gpu-high`: `stabilityai/stable-diffusion-xl-base-1.0`
 
-- 製品名
-- 製品説明
-- 任意の方向性ヒント
-- 任意の seed
-- 任意の派生元候補
-- 任意の name override
+production dependency note:
 
-## 出力
+- `peft` を worker に追加しています。理由は SDXL base に logo 専用 LoRA を載せて、汎用 `diffusers` 単体よりロゴ探索の当たり率を上げるためです。
 
-- 案件 state: `C:\Codex\workspaces\ToolForLogo`
-- レポート / 比較シート / export bundle: `C:\Codex\reports\ToolForLogo`
-- 長期退避先の予約: `C:\Codex\archive\ToolForLogo`
-
-候補ごとに次を保存します。
-
-- `mark.png`
-- `mark_raw.png` (`comfyui` / `openai` のときのみ)
-- `mark.svg` (`mock` のときのみ)
-- `wordmark.png`
-- `wordmark.svg`
-- `lockup_horizontal.png`
-- `lockup_stacked.png`
-- `preview_light.png`
-- `preview_dark.png`
-- `candidate.json`
-
-書き出し時は `manifest.json`、`comparison_sheet.png`、ZIP を生成します。
+`Settings` から download して cache を持てます。`allow auto download` を有効にすると、未配置時に worker が自動取得します。
 
 ## Quick Start
 
@@ -63,16 +98,6 @@ Windows の主導線:
 ```powershell
 .\start.bat
 ```
-
-`start.bat` の責務:
-
-1. Docker Desktop / engine の確認
-2. `.env` 自動生成
-3. `C:\Codex\...` 配下の出力先作成
-4. ComfyUI API の readiness 確認
-5. 必要なら `C:\apps\ComfyUI_windows_portable\run_nvidia_gpu_api.bat` を起動
-6. `docker compose up --build -d`
-7. `/health` で起動確認
 
 停止:
 
@@ -92,158 +117,85 @@ health:
 http://127.0.0.1:19130/health
 ```
 
-## Requirements
-
-- Windows + Docker Desktop
-- 既存の `C:\apps\ComfyUI_windows_portable`
-- Python 3.11+ でローカル CLI 実行も可能
-
-標準 production dependency:
-
-- `Pillow`
-
-依存理由:
-
-- `Pillow`: マーク整形、ワードマーク合成、preview、比較シート生成のため
-
-任意 dependency:
-
-- `openai`: `backend=openai` を明示的に使いたいときだけ手動追加
-
-## `.env`
-
-初回起動時に `.env.example` から `.env` を自動生成します。
-
-主な値:
-
-- `TOOL_FOR_LOGO_WEB_PORT`
-- `TOOL_FOR_LOGO_HOST_STATE_ROOT`
-- `TOOL_FOR_LOGO_HOST_REPORT_ROOT`
-- `TOOL_FOR_LOGO_HOST_ARCHIVE_ROOT`
-- `TOOL_FOR_LOGO_STATE_ROOT`
-- `TOOL_FOR_LOGO_REPORT_ROOT`
-- `TOOL_FOR_LOGO_ARCHIVE_ROOT`
-- `TOOL_FOR_LOGO_DEFAULT_BACKEND`
-- `TOOL_FOR_LOGO_START_COMFYUI`
-- `TOOL_FOR_LOGO_COMFYUI_DIR`
-- `TOOL_FOR_LOGO_COMFYUI_BASE_URL`
-- `TOOL_FOR_LOGO_COMFYUI_CHECKPOINT`
-- `TOOL_FOR_LOGO_COMFYUI_WIDTH`
-- `TOOL_FOR_LOGO_COMFYUI_HEIGHT`
-- `TOOL_FOR_LOGO_COMFYUI_STEPS`
-- `TOOL_FOR_LOGO_COMFYUI_CFG`
-- `TOOL_FOR_LOGO_COMFYUI_SAMPLER`
-- `TOOL_FOR_LOGO_COMFYUI_SCHEDULER`
-- `TOOL_FOR_LOGO_COMFYUI_TIMEOUT_SECONDS`
-- `TOOL_FOR_LOGO_COMFYUI_POLL_SECONDS`
-- `TOOL_FOR_LOGO_COMFYUI_NEGATIVE_PROMPT`
-
-## API Surface
-
-- `GET /health`
-- `GET /api/status`
-- `GET /api/cases`
-- `POST /api/cases`
-- `GET /api/cases/{case_id}`
-- `POST /api/cases/{case_id}/batches`
-- `POST /api/cases/{case_id}/candidates/{candidate_id}/status`
-- `POST /api/cases/{case_id}/exports`
-
 ## CLI
 
-ローカル実行例:
+web を起動:
 
 ```powershell
 $env:PYTHONPATH="src"
-python -m tool_for_logo create-case --name "Northwind Atlas" --description "Global logistics orchestration platform"
-python -m tool_for_logo generate-batch --case-id "<case_id>" --count 20 --backend comfyui --direction-hint "premium editorial"
-python -m tool_for_logo set-status --case-id "<case_id>" --candidate-id "<candidate_id>" --status favorite
-python -m tool_for_logo generate-batch --case-id "<case_id>" --count 6 --from-candidate "<candidate_id>" --backend comfyui
-python -m tool_for_logo export --case-id "<case_id>" --name-override "Northwind One"
-python -m tool_for_logo status --json
+python -m tool_for_logo web --host 127.0.0.1 --port 19130
 ```
 
-`mock` でフローだけ確認したい場合:
+worker daemon:
 
 ```powershell
-python -m tool_for_logo generate-batch --case-id "<case_id>" --count 8 --backend mock
+$env:PYTHONPATH="src"
+python -m tool_for_logo daemon --poll-interval 5
 ```
 
-`openai` を使いたい場合は、自分で `pip install openai` したうえで `--backend openai` を指定します。
+settings:
 
-## 利用フロー
-
-1. 案件を作る
-2. まず 20 案前後を `comfyui` または `mock` backend で一括生成する
-3. `favorite` / `excluded` / `adopted` を付ける
-4. 気に入った候補から `--from-candidate` で派生案を追加する
-5. 必要なら製品名だけ差し替えて export する
-6. `comparison_sheet.png` で比較する
-
-## State Layout
-
-```text
-ToolForLogo/
-  docker/
-  src/tool_for_logo/
-  tests/
-  .env.example
-  docker-compose.yml
-  start.bat
-  stop.bat
-  README.md
-
-C:\Codex\workspaces\ToolForLogo\
-  state\
-    cases\
-      <case_id>\
-        case.json
-        batches\
-        candidates\
-        exports\
-    logs\
-
-C:\Codex\reports\ToolForLogo\
-  <case_id>\
-    <export_id>\
-      manifest.json
-      comparison_sheet.png
-      <candidate_id>\
-        assets\
-    <export_id>.zip
+```powershell
+python -m tool_for_logo settings status --json
+python -m tool_for_logo settings save --compute-mode cpu --processing-quality standard --default-batch-count 10 --json
 ```
 
-## 概念モデル
+models:
 
-- `case`: 1 つのサービスやプロダクトに対するロゴ検討単位
-- `batch`: 1 回の一括生成
-- `candidate`: 各ロゴ案
-- `status`: `fresh` / `favorite` / `excluded` / `adopted`
-- `export`: 持ち出し用にまとめた成果物
+```powershell
+python -m tool_for_logo models list --json
+python -m tool_for_logo models download --preset-id cpu-standard --json
+python -m tool_for_logo models delete --preset-id cpu-standard --json
+```
 
-## 今回のスコープ
+jobs:
 
-- 案件管理
-- ローカル ComfyUI による実マーク生成
-- mock 一括生成
-- 派生バッチ
-- マークと文字の分離保存
-- AI 原案からの背景除去とブランド配色への整形
-- 横組み / 縦組みの lockup 生成
-- 背景明暗 preview
-- `comparison_sheet.png`
-- name override export
-- Docker 一発起動
-- `GET /health`
-- CLI `status`
+```powershell
+python -m tool_for_logo jobs list --json
+python -m tool_for_logo jobs create-batch --case-id <case_id> --count 10 --direction-hint "premium editorial" --json
+python -m tool_for_logo jobs run --job-id <job_id> --json
+```
 
-## 未実装
+直接 batch 実行:
 
-- 比較 UI / ギャラリー UI
-- フォント保存
-- 禁止モチーフ指定
-- 小サイズ視認性の自動採点
-- 方向性の言い換え再展開
+```powershell
+python -m tool_for_logo create-case --name "ToolForLogo" --description "Local-first logo exploration workspace" --json
+python -m tool_for_logo generate-batch --case-id <case_id> --count 4 --backend mock --json
+python -m tool_for_logo export --case-id <case_id> --json
+```
+
+## Settings 画面の役割
+
+`TimelineForAudio` / `TimelineForVideo` と同じ考え方で、Settings は次をまとめる入口です。
+
+- compute mode
+- processing quality
+- Hugging Face token
+- active model preset
+- cache usage
+- model download / delete
+
+## データの持ち方
+
+案件データ:
+
+- `app-data/cases/<case_id>/case.json`
+- `app-data/cases/<case_id>/batches/*.json`
+- `app-data/cases/<case_id>/candidates/<candidate_id>/candidate.json`
+- `app-data/cases/<case_id>/exports/*.json`
+
+worker jobs:
+
+- `outputs/jobs/<job_id>/request.json`
+- `outputs/jobs/<job_id>/status.json`
+- `outputs/jobs/<job_id>/result.json`
+- `outputs/jobs/<job_id>/worker.log`
+
+export:
+
+- `C:\Codex\reports\ToolForLogo\<case_id>\<export_id>\manifest.json`
+- `C:\Codex\reports\ToolForLogo\<case_id>\<export_id>\comparison_sheet.png`
+- `C:\Codex\reports\ToolForLogo\<case_id>\<export_id>.zip`
 
 ## テスト
 

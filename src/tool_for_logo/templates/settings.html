@@ -1,0 +1,190 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<section class="app-page">
+  <header class="panel page-header">
+    <div>
+      <p class="eyebrow">Settings</p>
+      <h1 class="page-title">Worker and model settings</h1>
+      <p class="page-description">主経路は GPU worker による image exploration です。まず 30 案前後を画像生成し、良い方向を選んでから次段階へ進めます。</p>
+    </div>
+  </header>
+
+  <div class="grid-2">
+    <section class="panel">
+      <form method="post" class="app-page" style="gap: 1rem;">
+        <input type="hidden" name="compute_mode" value="gpu" />
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="hf_token">Hugging Face token</label>
+            <input class="form-input" id="hf_token" name="hf_token" type="text" placeholder="hf_..." value="" />
+            <div class="form-help">{% if has_hf_token %}保存済みです。未変更なら空欄のままで構いません。{% else %}gated model や private repo を使う場合に保存します。{% endif %}</div>
+          </div>
+          <div class="form-row">
+            <label for="default_batch_count">Default batch count</label>
+            <input class="form-input" id="default_batch_count" name="default_batch_count" type="number" min="1" max="40" value="{{ settings.defaultBatchCount }}" />
+            <div class="form-help">30 件前後を一気に出して、目視で shortlist を作る前提です。</div>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-row">
+            <label>Image exploration runtime</label>
+            <div class="metric-card">
+              <div class="metric-label">Mode</div>
+              <div class="metric-value">GPU only</div>
+              <div class="metric-subtle">CPU image path は主経路から外しています。</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="processing_quality">Processing quality</label>
+            <select id="processing_quality" name="processing_quality">
+              <option value="standard" {% if settings.processingQuality == 'standard' %}selected{% endif %}>Fast 30-way exploration</option>
+              <option value="high" {% if settings.processingQuality == 'high' %}selected{% endif %}>High quality refine</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label for="default_direction_hint">Default direction hint</label>
+          <input class="form-input" id="default_direction_hint" name="default_direction_hint" type="text" value="{{ settings.defaultDirectionHint }}" />
+        </div>
+
+        <div class="form-row">
+          <label for="default_exploration_preset">Default exploration preset</label>
+          <select id="default_exploration_preset" name="default_exploration_preset">
+            {% for preset in exploration_presets %}
+            <option value="{{ preset.preset_id }}" {% if settings.defaultExplorationPreset == preset.preset_id %}selected{% endif %}>{{ preset.label }} / {{ preset.audience }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-help">顧客層やブランドの性格に近い探索計画を選びます。</div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-row" style="grid-column: 1 / -1;">
+            <label for="preferred_gpu_preset">Primary GPU exploration preset</label>
+            <select id="preferred_gpu_preset" name="preferred_gpu_preset">
+              {% for model in model_statuses %}
+                {% if model.family == 'image' and model.recommended_compute == 'gpu' and model.recommended_quality == 'standard' %}
+                <option value="{{ model.preset_id }}" {% if settings.preferredGpuPreset == model.preset_id %}selected{% endif %}>{{ model.display_name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+            <div class="form-help">最初の 20-30 案を出すための GPU 画像モデルです。</div>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="preferred_high_gpu_preset">High GPU preset</label>
+            <select id="preferred_high_gpu_preset" name="preferred_high_gpu_preset">
+              {% for model in model_statuses %}
+                {% if model.family == 'image' and model.recommended_compute == 'gpu' and model.recommended_quality == 'high' %}
+                <option value="{{ model.preset_id }}" {% if settings.preferredHighGpuPreset == model.preset_id %}selected{% endif %}>{{ model.display_name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+            <div class="form-help">shortlist から少数案を作り直す時だけ使います。</div>
+          </div>
+          <div class="form-row">
+            <label for="preferred_concept_preset">Secondary concept preset</label>
+            <select id="preferred_concept_preset" name="preferred_concept_preset">
+              {% for model in model_statuses %}
+                {% if model.family == 'concept' %}
+                <option value="{{ model.preset_id }}" {% if settings.preferredConceptPreset == model.preset_id %}selected{% endif %}>{{ model.display_name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+            <div class="form-help">SVG 化や構造化は後段で使う想定です。現段階の主役ではありません。</div>
+          </div>
+        </div>
+
+        <label class="form-help"><input type="checkbox" name="allow_auto_model_download" {% if settings.allowAutoModelDownload %}checked{% endif %} /> モデル未配置時に worker が自動ダウンロードする</label>
+
+        <div>
+          <button class="btn-primary" type="submit">Save settings</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="app-page" style="gap: 1rem;">
+      <section class="panel subtle-panel">
+        <p class="eyebrow">Worker</p>
+        <h2 class="section-title">GPU capability snapshot</h2>
+        <div class="grid-metrics" style="margin-top: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr));">
+          <div class="metric-card">
+            <div class="metric-label">GPU available</div>
+            <div class="metric-value">{{ 'Yes' if worker_capabilities.gpuAvailable else 'No' }}</div>
+            <div class="metric-subtle">{{ worker_capabilities.message }}</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Detected devices</div>
+            <div class="metric-value">{{ worker_capabilities.deviceCount }}</div>
+            <div class="metric-subtle">{{ worker_capabilities.deviceNames | join(', ') if worker_capabilities.deviceNames else 'No GPU detected' }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="page-header">
+          <div>
+            <p class="eyebrow">Cache</p>
+            <h2 class="section-title">Model cache</h2>
+          </div>
+          <span class="badge-chip">{{ cache.totalBytes | filesize }}</span>
+        </div>
+        <p class="page-description">concept model と experimental image model の cache 合計です。削除は worker job として実行します。</p>
+        <form method="post" action="{{ url_for('queue_cache_clear') }}">
+          <button class="btn-secondary" type="submit">Queue cache clear</button>
+        </form>
+      </section>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Models</p>
+        <h2 class="section-title">Preset catalog</h2>
+      </div>
+    </div>
+    <div class="table-shell" style="margin-top: 1rem;">
+      <table class="app-table">
+        <thead>
+          <tr>
+            <th>Preset</th>
+            <th>Family</th>
+            <th>Repo</th>
+            <th>Purpose</th>
+            <th>Cache</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for model in model_statuses %}
+          <tr>
+            <td>
+              <strong>{{ model.display_name }}</strong>
+              {% if model.active %}<div class="small-text">active for current settings</div>{% endif %}
+            </td>
+            <td>{{ model.family }}</td>
+            <td><code>{{ model.repo_id }}</code></td>
+            <td>{{ model.purpose }}</td>
+            <td>{{ 'Downloaded' if model.downloaded else 'Missing' }}{% if model.sizeBytes %}<div class="small-text">{{ model.sizeBytes | filesize }}</div>{% endif %}</td>
+            <td>
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <form method="post" action="{{ url_for('queue_model_download', preset_id=model.preset_id) }}">
+                  <button class="btn-table" type="submit">Queue download</button>
+                </form>
+                <form method="post" action="{{ url_for('queue_model_delete', preset_id=model.preset_id) }}">
+                  <button class="btn-table-danger" type="submit">Queue delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>
+{% endblock %}

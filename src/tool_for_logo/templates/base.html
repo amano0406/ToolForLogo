@@ -1,0 +1,57 @@
+﻿<!DOCTYPE html>
+<html lang="ja" data-app-theme="workbench">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }} - ToolForLogo</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="app-sidebar">
+      <a class="brand-link" href="{{ url_for('cases_index') }}">
+        <div class="brand-mark"></div>
+        <div class="brand-text">
+          <strong>ToolForLogo</strong>
+          <span>Local-first logo exploration workbench with a dedicated worker runtime.</span>
+        </div>
+      </a>
+
+      <nav>
+        <a class="nav-link {% if nav_path == '/cases/new' %}nav-link-active{% endif %}" href="{{ url_for('new_case') }}">New Case</a>
+        <a class="nav-link {% if nav_path == '/cases' or nav_path.startswith('/cases/') %}nav-link-active{% endif %}" href="{{ url_for('cases_index') }}">Cases</a>
+        <a class="nav-link {% if nav_path == '/settings' %}nav-link-active{% endif %}" href="{{ url_for('settings_page') }}">Settings</a>
+      </nav>
+
+      {% if active_jobs %}
+      <section class="panel subtle-panel">
+        <p class="eyebrow">Worker</p>
+        <h2 class="section-title">Active Jobs</h2>
+        <div class="small-text" style="margin-top: 0.6rem; display: grid; gap: 0.6rem;">
+          {% for job in active_jobs[:4] %}
+          <div>
+            <strong>{{ job.status.job_type if job.status is defined else job['job_type'] }}</strong><br />
+            {{ job.status.message if job.status is defined else job['message'] }}
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+    </aside>
+
+    <main class="app-main">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-list">
+          {% for category, message in messages %}
+          <div class="flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
